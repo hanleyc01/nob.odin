@@ -6,9 +6,80 @@ import "core:strings"
 import "core:sys/posix"
 import "core:fmt"
 
+// Helper to make thread-count flags easier, returns `-thread-count:<N>`
+thread_count :: proc(N: int) -> string {
+    s := fmt.tprint(N)
+    return strings.concatenate({
+        "-thread-count:",
+        s
+    })
+}
+
 // Helper to make odin compiler flags easier, returns `-out:<out>`
 output :: proc(out: string) -> string {
     return strings.concatenate({"-out:", out})
+}
+
+// Build-mode options to pass to the odin compiler.
+Build_Mode :: enum {
+    Exe,
+    Test,
+    Dll,
+    Shared,
+    Dynamic,
+    Lib,
+    Static,
+    Obj,
+    Object,
+    Assembly,
+    Assembler,
+    Asm,
+    LLVM_Ir,
+    LLVM,
+}
+
+build_mode_to_string :: proc(mode: Build_Mode) -> string {
+    switch mode {
+    case .Exe:
+        return "exe"
+    case .Test:
+        return "test"
+    case .Dll:
+        return "dll"
+    case .Shared:
+        return "shared"
+    case .Dynamic:
+        return "dynamic"
+    case .Lib:
+        return "lib"
+    case .Static:
+        return "static"
+    case .Obj:
+        return "obj"
+    case .Object:
+        return "object"
+    case .Assembly:
+        return "assembly"
+    case .Assembler:
+        return "assember"
+    case .Asm:
+        return "asm"
+    case .LLVM_Ir:
+        return "llvm-ir"
+    case .LLVM:
+        return "llvm"
+    case:
+        panic("unreachable: build_mode_to_string")
+    }
+}
+
+// Helper function for writing build-mode options: returns `-build:<mode>`.
+build_mode :: proc(mode: Build_Mode) -> string {
+    mode_str := build_mode_to_string(mode)
+    return strings.concatenate({
+        "-build-mode:",
+        mode_str
+    })
 }
 
 log :: proc(msgs: ..any) {
@@ -79,7 +150,6 @@ command_append :: proc(command: ^Command, to_appends: ..string) {
 }
 
 command_rebuild_urself :: proc(binary_path: string, source_path: string) -> [dynamic]string {
-    // TODO: implement
     command: [dynamic]string
     append(&command, "odin")
     append(&command, "build")
@@ -237,6 +307,7 @@ go_rebuild_urself :: proc(args: []string, source_path: string, var_args: ..strin
     command_options := command_options_init()
     ok = command_run_with_options(&command, command_options)
     if !ok {
+        log_error("Error running process")
         rename(old_binary_path, binary_path)
         os.exit(1)
     }
