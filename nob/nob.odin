@@ -17,6 +17,10 @@ output :: proc(out: string) -> string {
 	return strings.concatenate({"-out:", out})
 }
 
+define :: proc(out: string) -> string {
+	return strings.concatenate({"-define:", out})
+}
+
 // Build-mode options to pass to the odin compiler.
 Build_Mode :: enum {
 	Exe,
@@ -161,7 +165,8 @@ command_write_to_string :: proc(command: Command, b: ^strings.Builder) {
 	}
 }
 
-command_start_process :: proc(command: Command) {
+@(require_results)
+command_start_process :: proc(command: Command) -> bool {
 	sb := strings.builder_make()
 	command_write_to_string(command, &sb)
 	s := strings.to_string(sb)
@@ -172,36 +177,32 @@ command_start_process :: proc(command: Command) {
 		{command = command.commands[:]},
 		context.allocator,
 	)
+	defer delete(stdout)
+	defer delete(stderr)
+
 	if err != nil {
 		log_error("failed to run:", err)
 		os.exit(state.exit_code)
 	}
-	defer delete(stdout)
-	defer delete(stderr)
 
-	log("exit code:", state.exit_code)
-	strerr := string(stderr)
-	if strerr != "" {
-		fmt.eprint(strerr)
-	}
+	if len(stderr) > 0 do fmt.eprint(string(stderr))
+	if len(stdout) > 0 do fmt.eprint(string(stdout))
 
-	strout := string(stdout)
-	if strout != "" {
-		fmt.print(strout)
+	if state.exit_code != 0 {
+		log_error("exit code:", state.exit_code)
+		return false
 	}
+	return true
 }
 
 // Run the current command, reinitializing the internal array.
 command_run_with_options :: proc(command: ^Command, options: Command_Options) -> (ok: bool) {
-	ok = true
 	defer if options.should_reset {
 		command_reinit(command)
 	}
 
 	// TODO: add async and specialized stdout and stderr
-	command_start_process(command^)
-
-	return ok
+	return command_start_process(command^)
 }
 
 // Rename a file to a new name.
