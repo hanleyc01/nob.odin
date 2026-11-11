@@ -38,6 +38,14 @@ Build_Mode :: enum {
     LLVM,
 }
 
+ensure_folder_exists :: proc(folder_name: string) -> os.Error {
+    folder_exists := os.exists(folder_name)
+    if !folder_exists {
+        os.make_directory(folder_name) or_return
+    }
+    return nil
+}
+
 build_mode_to_string :: proc(mode: Build_Mode) -> string {
     switch mode {
     case .Exe:

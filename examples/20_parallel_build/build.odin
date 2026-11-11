@@ -17,6 +17,7 @@ main :: proc() {
         "build", 
         src_path, 
         nob.output(out_path),
+        // Thread count determines how many threads to spawn
         nob.thread_count(10)
     )
     ok := nob.command_run_with_options(&command, nob.default_opts())
