@@ -1,8 +1,10 @@
 package nob
 
+import "core:mem"
 import "core:c/libc"
 import "core:fmt"
 import "core:os"
+import "core:slice"
 import "core:strings"
 import "core:sys/posix"
 
@@ -324,4 +326,116 @@ go_rebuild_urself :: proc(args: []string, source_path: string, var_args: ..strin
 	}
 
 	os.exit(0)
+}
+
+/*
+# `Argument_Parser`
+
+Simple argument parsing, for breaking up builds into commands.
+
+## Example
+```
+package main
+
+import "core:os"
+import "core:fmt"
+import "./nob"
+
+NAME :: "example_program"
+
+do_something :: proc() {
+    fmt.println("Hello!")
+}
+
+main :: proc() {
+    nob.go_rebuild_urself(os.args, #file)
+
+    parser := nob.argument_parser(NAME)
+    nob.parser_add_argument(&parser, "build", proc_ = do_something)
+
+    ok := nob.parse_args(os.args)
+    if !ok {
+        os.exit
+    }
+}
+```
+*/
+Argument_Parser :: struct {
+	name:      string,
+	arguments: map[string]proc(),
+	help_strings: map[string]string,
+}
+
+argument_parser :: proc(name: string, allocator := context.allocator) -> Argument_Parser {
+	return Argument_Parser {
+		name = name,
+		arguments = make(map[string]proc(), allocator),
+		help_strings = make(map[string]string, allocator)
+	}
+}
+
+argument_parser_destroy :: proc(parser: ^Argument_Parser) {
+	delete(parser.arguments)
+	delete(parser.help_strings)
+	delete(help_text)
+	help_text = ""
+	parser^ = {}
+}
+
+parser_add_argument :: proc(parser: ^Argument_Parser, name: string, help_message := "", proc_: proc()) {
+	parser.arguments[name] = proc_
+	parser.help_strings[name] = help_message
+}
+
+// Odin procs can't capture variables, so the `help` command reads its text from
+// here rather than from the parser.
+@(private)
+help_text: string
+
+@(private)
+print_help :: proc() {
+	fmt.print(help_text)
+}
+
+// Registers a `help` command that lists every command and its help message,
+// unless the user has already registered their own `help`.
+@(private)
+add_help_string :: proc(parser: ^Argument_Parser) {
+	if "help" in parser.arguments do return
+
+	parser.arguments["help"] = print_help
+	parser.help_strings["help"] = "show this help message"
+
+	// Map iteration order is unspecified, so sort names for stable output.
+	names := make([dynamic]string, 0, len(parser.arguments), context.temp_allocator)
+	width := 0
+	for name in parser.arguments {
+		append(&names, name)
+		width = max(width, len(name))
+	}
+	slice.sort(names[:])
+
+	b := strings.builder_make(parser.arguments.allocator)
+	fmt.sbprintf(&b, "usage: %s <command>\n\ncommands:\n", parser.name)
+	for name in names {
+		fmt.sbprint(&b, "  ", name, sep = "")
+		for _ in len(name) ..< width do strings.write_byte(&b, ' ')
+		fmt.sbprintln(&b, "  ", parser.help_strings[name], sep = "")
+	}
+
+	delete(help_text)
+	help_text = strings.to_string(b)
+}
+
+parse_args :: proc(parser: ^Argument_Parser, args: []string) -> bool {
+	add_help_string(parser)
+
+	if len(args) < 2 do return false
+	p, found := parser.arguments[args[1]]
+	if !found {
+		log_error("unknown command:", args[1])
+		return false
+	}
+	p()
+	return true
 }
