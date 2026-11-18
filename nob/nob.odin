@@ -1,6 +1,5 @@
 package nob
 
-import "core:mem"
 import "core:c/libc"
 import "core:fmt"
 import "core:os"
@@ -21,6 +20,21 @@ output :: proc(out: string) -> string {
 
 define :: proc(out: string) -> string {
 	return strings.concatenate({"-define:", out})
+}
+
+optimization :: proc(level: Optimization) -> string {
+	switch level {
+	case .None:
+		return "-o:none"
+	case .Minimal:
+		return "-o:minimal"
+	case .Speed:
+		return "-o:speed"
+	case .Aggressive:
+		return "-o:aggressive"
+	case:
+		panic("unreachable: optimization")
+	}
 }
 
 // Build-mode options to pass to the odin compiler.
@@ -150,13 +164,18 @@ command_append :: proc(command: ^Command, to_appends: ..string) {
 	}
 }
 
-command_rebuild_urself :: proc(binary_path: string, source_path: string) -> [dynamic]string {
+command_rebuild_urself :: proc(
+	binary_path: string,
+	source_path: string,
+	optimization_level: Optimization,
+) -> [dynamic]string {
 	command: [dynamic]string
 	append(&command, "odin")
 	append(&command, "build")
 	append(&command, source_path)
 	append(&command, "-file")
 	append(&command, strings.concatenate({"-out:", binary_path}))
+	append(&command, optimization(optimization_level))
 	return command
 }
 
@@ -268,10 +287,21 @@ needs_rebuild :: proc(
 	return .Doesnt_Need_Rebuild
 }
 
+Optimization :: enum {
+	None,
+	Minimal,
+	Speed,
+	Aggressive,
+}
 
 // Detects whether or not to rebuild the `nob` project given modifications
 // the `nob` file.
-go_rebuild_urself :: proc(args: []string, source_path: string, var_args: ..string) {
+go_rebuild_urself :: proc(
+	args: []string,
+	source_path: string,
+	optimization_level := Optimization.Speed,
+	var_args: ..string,
+) {
 	if args == nil || len(args) < 1 {
 		os.exit(-1)
 	}
@@ -309,7 +339,10 @@ go_rebuild_urself :: proc(args: []string, source_path: string, var_args: ..strin
 		os.exit(1)
 	}
 
-	command_append(&command, ..command_rebuild_urself(binary_path, source_path)[:])
+	command_append(
+		&command,
+		..command_rebuild_urself(binary_path, source_path, optimization_level)[:],
+	)
 	command_options := command_options_init()
 	ok = command_run_with_options(&command, command_options)
 	if !ok {
@@ -361,8 +394,8 @@ main :: proc() {
 ```
 */
 Argument_Parser :: struct {
-	name:      string,
-	arguments: map[string]proc(),
+	name:         string,
+	arguments:    map[string]proc(),
 	help_strings: map[string]string,
 }
 
@@ -370,7 +403,7 @@ argument_parser :: proc(name: string, allocator := context.allocator) -> Argumen
 	return Argument_Parser {
 		name = name,
 		arguments = make(map[string]proc(), allocator),
-		help_strings = make(map[string]string, allocator)
+		help_strings = make(map[string]string, allocator),
 	}
 }
 
@@ -382,7 +415,12 @@ argument_parser_destroy :: proc(parser: ^Argument_Parser) {
 	parser^ = {}
 }
 
-parser_add_argument :: proc(parser: ^Argument_Parser, name: string, help_message := "", proc_: proc()) {
+parser_add_argument :: proc(
+	parser: ^Argument_Parser,
+	name: string,
+	help_message := "",
+	proc_: proc(),
+) {
 	parser.arguments[name] = proc_
 	parser.help_strings[name] = help_message
 }
